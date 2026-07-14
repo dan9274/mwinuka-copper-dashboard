@@ -13,19 +13,22 @@ WIRE_SIZES = [
 ]
 
 # --- SUPABASE CLOUD CONNECTION ---
-# We fetch these safely from Streamlit's Secrets manager later
-if "supabase_url" in st.secrets and "supabase_key" in st.secrets:
-    SUPABASE_URL = st.secrets["supabase_url"]
-    SUPABASE_KEY = st.secrets["supabase_key"]
-else:
-    # Fallback placeholders for local testing
-    SUPABASE_URL = "YOUR_SUPABASE_URL"
-    SUPABASE_KEY = "YOUR_SUPABASE_KEY"
+SUPABASE_URL = st.secrets.get("supabase_url", "YOUR_SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("supabase_key", "YOUR_SUPABASE_KEY")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = None
+if SUPABASE_URL.startswith("http"):
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        st.error(f"Error initializing Supabase: {e}")
 
 def fetch_data():
     """Fetches all transactions from the cloud Supabase database."""
+    if supabase is None:
+        st.error("⚠️ Supabase connection is missing or invalid! Please add your Supabase URL and Key in Streamlit Secrets.")
+        return pd.DataFrame()
+        
     try:
         response = supabase.table("transactions").select("*").order("id", desc=True).execute()
         if response.data:
@@ -43,6 +46,9 @@ page = st.sidebar.radio("Go to:", ["Data Entry", "Dashboard & Inventory", "✏�
 if page == "Data Entry":
     st.header("📥 Record New Transaction")
     
+    if supabase is None:
+        st.warning("⚠️ Database not connected. Please configure your Streamlit Secrets.")
+        
     with st.form("entry_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -62,28 +68,31 @@ if page == "Data Entry":
         with col4:
             comment = st.text_area("Comment / Notes", placeholder="Type any additional details here...")
 
-        submit = st.form_submit_with_button("Save Transaction")
+        submit = st.form_submit_button("Save Transaction")
         
-        if submit:
-            if quantity <= 0:
-                st.error("❌ Please enter a valid quantity greater than 0.")
-            else:
-                data_payload = {
-                    "date": date_val,
-                    "wire_size": wire_size,
-                    "transaction_type": transaction_type,
-                    "quantity": quantity,
-                    "selling_price": float(selling_price),
-                    "unsealed_size": unsealed_size if unsealed_size != "" else None,
-                    "lost_grams": lost_grams,
-                    "comment": comment if comment.strip() != "" else None
-                }
-                try:
-                    supabase.table("transactions").insert(data_payload).execute()
-                    st.success("✅ Transaction successfully saved to the cloud database!")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"Failed to save data: {e}")
+    # Moved OUTSIDE the form to comply with Streamlit's new rules
+    if submit:
+        if supabase is None:
+            st.error("❌ Cannot save! Supabase connection is missing. Check Streamlit Secrets.")
+        elif quantity <= 0:
+            st.error("❌ Please enter a valid quantity greater than 0.")
+        else:
+            data_payload = {
+                "date": date_val,
+                "wire_size": wire_size,
+                "transaction_type": transaction_type,
+                "quantity": quantity,
+                "selling_price": float(selling_price),
+                "unsealed_size": unsealed_size if unsealed_size != "" else None,
+                "lost_grams": lost_grams,
+                "comment": comment if comment.strip() != "" else None
+            }
+            try:
+                supabase.table("transactions").insert(data_payload).execute()
+                st.success("✅ Transaction successfully saved to the cloud database!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Failed to save data: {e}")
 
 # --- PAGE 2: DASHBOARD & INVENTORY ---
 elif page == "Dashboard & Inventory":
@@ -133,7 +142,8 @@ elif page == "Dashboard & Inventory":
         st.subheader("📜 Recent Activity Log")
         st.dataframe(df_filtered[['date', 'wire_size', 'transaction_type', 'quantity', 'unsealed_size', 'lost_grams', 'comment']], use_container_width=True)
     else:
-        st.info("The cloud database is currently empty. Add your first transaction to view details.")
+        if supabase is not None:
+            st.info("The cloud database is currently empty. Add your first transaction to view details.")
 
 # --- PAGE 3: EDIT RECORDS ---
 elif page == "✏️ Edit Records":
@@ -165,11 +175,15 @@ elif page == "✏️ Edit Records":
                 
                 c1, c2 = st.columns(2)
                 with c1:
-                    save_btn = st.form_submit_with_button("💾 Save Changes")
+                    save_btn = st.form_submit_button("💾 Save Changes")
                 with c2:
-                    del_btn = st.form_submit_with_button("🗑️ Permanent Delete")
+                    del_btn = st.form_submit_button("🗑️ Permanent Delete")
                     
-                if save_btn:
+            # Moved OUTSIDE the form to comply with Streamlit's new rules
+            if save_btn:
+                if supabase is None:
+                    st.error("❌ Cannot save! Supabase connection is missing.")
+                else:
                     update_payload = {
                         "date": e_date, "wire_size": e_size, "transaction_type": e_type, "quantity": e_qty, "selling_price": float(e_price),
                         "unsealed_size": e_unsealed if e_unsealed != "" else None, "lost_grams": e_lost, "comment": e_comment if e_comment.strip() != "" else None
@@ -177,13 +191,17 @@ elif page == "✏️ Edit Records":
                     supabase.table("transactions").update(update_payload).eq("id", selected_id).execute()
                     st.success("Record updated successfully!")
                     st.rerun()
-                    
-                if del_btn:
+                
+            if del_btn:
+                if supabase is None:
+                    st.error("❌ Cannot delete! Supabase connection is missing.")
+                else:
                     supabase.table("transactions").delete().eq("id", selected_id).execute()
                     st.warning("Record permanently removed from cloud database.")
                     st.rerun()
     else:
-        st.info("No records to manage.")
+        if supabase is not None:
+            st.info("No records to manage.")
 
 # --- PAGE 4: DATABASE CONTROL ---
 elif page == "⚙️ Database Control":
@@ -199,4 +217,5 @@ elif page == "⚙️ Database Control":
             mime='text/csv',
         )
     else:
-        st.info("No data available.")
+        if supabase is not None:
+            st.info("No data available.")
