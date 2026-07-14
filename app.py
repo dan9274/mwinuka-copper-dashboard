@@ -38,6 +38,19 @@ def fetch_data():
         st.error(f"Error fetching data from cloud: {e}")
         return pd.DataFrame()
 
+def check_password():
+    """Returns True if the user entered the correct password."""
+    if st.session_state.get("password_correct", False):
+        return True
+        
+    password = st.text_input("🔒 Enter Password to access this page:", type="password")
+    if password == "mwinuka123":
+        st.session_state["password_correct"] = True
+        st.rerun()
+    elif password != "":
+        st.error("❌ Incorrect Password")
+    return False
+
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.title("Mwinuka Copper")
 page = st.sidebar.radio("Go to:", ["Data Entry", "Dashboard & Inventory", "✏️ Edit Records", "⚙️ Database Control"])
@@ -46,53 +59,54 @@ page = st.sidebar.radio("Go to:", ["Data Entry", "Dashboard & Inventory", "✏�
 if page == "Data Entry":
     st.header("📥 Record New Transaction")
     
-    if supabase is None:
-        st.warning("⚠️ Database not connected. Please configure your Streamlit Secrets.")
-        
-    with st.form("entry_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            date_val = st.date_input("Date", datetime.today()).strftime('%Y-%m-%d')
-            wire_size = st.selectbox("Wire Size (mm)", WIRE_SIZES)
-            transaction_type = st.selectbox("Transaction Type", ["Stock In", "Sale"])
-        with col2:
-            quantity = st.number_input("Quantity (kg)", min_value=0.0, step=0.001, format="%.3f")
-            selling_price = st.selectbox("Selling Price (TZS per kg)", [49000, 60000])
-
-        st.markdown("---")
-        st.subheader("Description (Optional)")
-        col3, col4 = st.columns(2)
-        with col3:
-            unsealed_size = st.selectbox("Unsealed Size (mm)", [""] + WIRE_SIZES)
-            lost_grams = st.number_input("Negative Grams (g)", min_value=0.0, step=1.0)
-        with col4:
-            comment = st.text_area("Comment / Notes", placeholder="Type any additional details here...")
-
-        submit = st.form_submit_button("Save Transaction")
-        
-    # Moved OUTSIDE the form to comply with Streamlit's new rules
-    if submit:
+    if check_password():
         if supabase is None:
-            st.error("❌ Cannot save! Supabase connection is missing. Check Streamlit Secrets.")
-        elif quantity <= 0:
-            st.error("❌ Please enter a valid quantity greater than 0.")
-        else:
-            data_payload = {
-                "date": date_val,
-                "wire_size": wire_size,
-                "transaction_type": transaction_type,
-                "quantity": quantity,
-                "selling_price": float(selling_price),
-                "unsealed_size": unsealed_size if unsealed_size != "" else None,
-                "lost_grams": lost_grams,
-                "comment": comment if comment.strip() != "" else None
-            }
-            try:
-                supabase.table("transactions").insert(data_payload).execute()
-                st.success("✅ Transaction successfully saved to the cloud database!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Failed to save data: {e}")
+            st.warning("⚠️ Database not connected. Please configure your Streamlit Secrets.")
+            
+        with st.form("entry_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                date_val = st.date_input("Date", datetime.today()).strftime('%Y-%m-%d')
+                wire_size = st.selectbox("Wire Size (mm)", WIRE_SIZES)
+                transaction_type = st.selectbox("Transaction Type", ["Stock In", "Sale"])
+            with col2:
+                quantity = st.number_input("Quantity (kg)", min_value=0.0, step=0.001, format="%.3f")
+                selling_price = st.selectbox("Selling Price (TZS per kg)", [49000, 60000])
+
+            st.markdown("---")
+            st.subheader("Description (Optional)")
+            col3, col4 = st.columns(2)
+            with col3:
+                unsealed_size = st.selectbox("Unsealed Size (mm)", [""] + WIRE_SIZES)
+                lost_grams = st.number_input("Negative Grams (g)", min_value=0.0, step=1.0)
+            with col4:
+                comment = st.text_area("Comment / Notes", placeholder="Type any additional details here...")
+
+            submit = st.form_submit_button("Save Transaction")
+            
+        # Moved OUTSIDE the form to comply with Streamlit's new rules
+        if submit:
+            if supabase is None:
+                st.error("❌ Cannot save! Supabase connection is missing. Check Streamlit Secrets.")
+            elif quantity <= 0:
+                st.error("❌ Please enter a valid quantity greater than 0.")
+            else:
+                data_payload = {
+                    "date": date_val,
+                    "wire_size": wire_size,
+                    "transaction_type": transaction_type,
+                    "quantity": quantity,
+                    "selling_price": float(selling_price),
+                    "unsealed_size": unsealed_size if unsealed_size != "" else None,
+                    "lost_grams": lost_grams,
+                    "comment": comment if comment.strip() != "" else None
+                }
+                try:
+                    supabase.table("transactions").insert(data_payload).execute()
+                    st.success("✅ Transaction successfully saved to the cloud database!")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Failed to save data: {e}")
 
 # --- PAGE 2: DASHBOARD & INVENTORY ---
 elif page == "Dashboard & Inventory":
@@ -148,74 +162,78 @@ elif page == "Dashboard & Inventory":
 # --- PAGE 3: EDIT RECORDS ---
 elif page == "✏️ Edit Records":
     st.header("✏️ Modify Cloud Transactions")
-    df = fetch_data()
     
-    if not df.empty:
-        search_date = st.date_input("Find logs by Date", datetime.today()).strftime('%Y-%m-%d')
-        day_df = df[df['date'] == search_date]
+    if check_password():
+        df = fetch_data()
         
-        if day_df.empty:
-            st.warning(f"No records found on {search_date}")
-        else:
-            record_options = {f"ID: {row['id']} | {row['transaction_type']} | {row['wire_size']}mm | {row['quantity']}kg": row['id'] for _, row in day_df.iterrows()}
-            selected_record_label = st.selectbox("Select a row to manage:", list(record_options.keys()))
-            selected_id = record_options[selected_record_label]
+        if not df.empty:
+            search_date = st.date_input("Find logs by Date", datetime.today()).strftime('%Y-%m-%d')
+            day_df = df[df['date'] == search_date]
             
-            target = df[df['id'] == selected_id].iloc[0]
-            
-            with st.form("edit_form"):
-                e_date = st.date_input("Edit Date", datetime.strptime(target['date'], '%Y-%m-%d')).strftime('%Y-%m-%d')
-                e_size = st.selectbox("Edit Wire Size", WIRE_SIZES, index=WIRE_SIZES.index(target['wire_size']))
-                e_type = st.selectbox("Edit Type", ["Stock In", "Sale"], index=0 if target['transaction_type'] == "Stock In" else 1)
-                e_qty = st.number_input("Edit Quantity (kg)", value=float(target['quantity']), format="%.3f")
-                e_price = st.selectbox("Edit Price", [49000, 60000], index=0 if int(target['selling_price']) == 49000 else 1)
-                e_unsealed = st.selectbox("Edit Unsealed Size", [""] + WIRE_SIZES, index=(WIRE_SIZES.index(target['unsealed_size'])+1) if target['unsealed_size'] else 0)
-                e_lost = st.number_input("Edit Negative Grams (g)", value=float(target['lost_grams'] or 0))
-                e_comment = st.text_area("Edit Comment", value=target['comment'] if target['comment'] else "")
+            if day_df.empty:
+                st.warning(f"No records found on {search_date}")
+            else:
+                record_options = {f"ID: {row['id']} | {row['transaction_type']} | {row['wire_size']}mm | {row['quantity']}kg": row['id'] for _, row in day_df.iterrows()}
+                selected_record_label = st.selectbox("Select a row to manage:", list(record_options.keys()))
+                selected_id = record_options[selected_record_label]
                 
-                c1, c2 = st.columns(2)
-                with c1:
-                    save_btn = st.form_submit_button("💾 Save Changes")
-                with c2:
-                    del_btn = st.form_submit_button("🗑️ Permanent Delete")
+                target = df[df['id'] == selected_id].iloc[0]
+                
+                with st.form("edit_form"):
+                    e_date = st.date_input("Edit Date", datetime.strptime(target['date'], '%Y-%m-%d')).strftime('%Y-%m-%d')
+                    e_size = st.selectbox("Edit Wire Size", WIRE_SIZES, index=WIRE_SIZES.index(target['wire_size']))
+                    e_type = st.selectbox("Edit Type", ["Stock In", "Sale"], index=0 if target['transaction_type'] == "Stock In" else 1)
+                    e_qty = st.number_input("Edit Quantity (kg)", value=float(target['quantity']), format="%.3f")
+                    e_price = st.selectbox("Edit Price", [49000, 60000], index=0 if int(target['selling_price']) == 49000 else 1)
+                    e_unsealed = st.selectbox("Edit Unsealed Size", [""] + WIRE_SIZES, index=(WIRE_SIZES.index(target['unsealed_size'])+1) if target['unsealed_size'] else 0)
+                    e_lost = st.number_input("Edit Negative Grams (g)", value=float(target['lost_grams'] or 0))
+                    e_comment = st.text_area("Edit Comment", value=target['comment'] if target['comment'] else "")
                     
-            # Moved OUTSIDE the form to comply with Streamlit's new rules
-            if save_btn:
-                if supabase is None:
-                    st.error("❌ Cannot save! Supabase connection is missing.")
-                else:
-                    update_payload = {
-                        "date": e_date, "wire_size": e_size, "transaction_type": e_type, "quantity": e_qty, "selling_price": float(e_price),
-                        "unsealed_size": e_unsealed if e_unsealed != "" else None, "lost_grams": e_lost, "comment": e_comment if e_comment.strip() != "" else None
-                    }
-                    supabase.table("transactions").update(update_payload).eq("id", selected_id).execute()
-                    st.success("Record updated successfully!")
-                    st.rerun()
-                
-            if del_btn:
-                if supabase is None:
-                    st.error("❌ Cannot delete! Supabase connection is missing.")
-                else:
-                    supabase.table("transactions").delete().eq("id", selected_id).execute()
-                    st.warning("Record permanently removed from cloud database.")
-                    st.rerun()
-    else:
-        if supabase is not None:
-            st.info("No records to manage.")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        save_btn = st.form_submit_button("💾 Save Changes")
+                    with c2:
+                        del_btn = st.form_submit_button("🗑️ Permanent Delete")
+                        
+                # Moved OUTSIDE the form to comply with Streamlit's new rules
+                if save_btn:
+                    if supabase is None:
+                        st.error("❌ Cannot save! Supabase connection is missing.")
+                    else:
+                        update_payload = {
+                            "date": e_date, "wire_size": e_size, "transaction_type": e_type, "quantity": e_qty, "selling_price": float(e_price),
+                            "unsealed_size": e_unsealed if e_unsealed != "" else None, "lost_grams": e_lost, "comment": e_comment if e_comment.strip() != "" else None
+                        }
+                        supabase.table("transactions").update(update_payload).eq("id", selected_id).execute()
+                        st.success("Record updated successfully!")
+                        st.rerun()
+                    
+                if del_btn:
+                    if supabase is None:
+                        st.error("❌ Cannot delete! Supabase connection is missing.")
+                    else:
+                        supabase.table("transactions").delete().eq("id", selected_id).execute()
+                        st.warning("Record permanently removed from cloud database.")
+                        st.rerun()
+        else:
+            if supabase is not None:
+                st.info("No records to manage.")
 
 # --- PAGE 4: DATABASE CONTROL ---
 elif page == "⚙️ Database Control":
     st.header("⚙️ Data Administration")
-    df = fetch_data()
     
-    if not df.empty:
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Download Entire Cloud Database (CSV)",
-            data=csv,
-            file_name=f"copper_cloud_export_{datetime.today().strftime('%Y-%m-%d')}.csv",
-            mime='text/csv',
-        )
-    else:
-        if supabase is not None:
-            st.info("No data available.")
+    if check_password():
+        df = fetch_data()
+        
+        if not df.empty:
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Download Entire Cloud Database (CSV)",
+                data=csv,
+                file_name=f"copper_cloud_export_{datetime.today().strftime('%Y-%m-%d')}.csv",
+                mime='text/csv',
+            )
+        else:
+            if supabase is not None:
+                st.info("No data available.")
