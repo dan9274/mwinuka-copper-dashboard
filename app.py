@@ -51,6 +51,16 @@ def check_password():
         st.error("❌ Incorrect Password")
     return False
 
+# --- INITIALIZE SESSION STATE MEMORY ---
+if "mem_date" not in st.session_state:
+    st.session_state["mem_date"] = datetime.today()
+if "mem_wire" not in st.session_state:
+    st.session_state["mem_wire"] = WIRE_SIZES[0]
+if "mem_type" not in st.session_state:
+    st.session_state["mem_type"] = "Stock In"
+if "mem_price" not in st.session_state:
+    st.session_state["mem_price"] = 49000
+
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.title("Mwinuka Copper")
 page = st.sidebar.radio("Go to:", ["Data Entry", "Dashboard & Inventory", "✏️ Edit Records", "⚙️ Database Control"])
@@ -66,12 +76,12 @@ if page == "Data Entry":
         with st.form("entry_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                date_val = st.date_input("Date", datetime.today()).strftime('%Y-%m-%d')
-                wire_size = st.selectbox("Wire Size (mm)", WIRE_SIZES)
-                transaction_type = st.selectbox("Transaction Type", ["Stock In", "Sale"])
+                date_val = st.date_input("Date", st.session_state["mem_date"]).strftime('%Y-%m-%d')
+                wire_size = st.selectbox("Wire Size (mm)", WIRE_SIZES, index=WIRE_SIZES.index(st.session_state["mem_wire"]))
+                transaction_type = st.selectbox("Transaction Type", ["Stock In", "Sale"], index=["Stock In", "Sale"].index(st.session_state["mem_type"]))
             with col2:
                 quantity = st.number_input("Quantity (kg)", min_value=0.0, step=0.001, format="%.3f")
-                selling_price = st.selectbox("Selling Price (TZS per kg)", [49000, 60000])
+                selling_price = st.selectbox("Selling Price (TZS per kg)", [49000, 60000], index=[49000, 60000].index(st.session_state["mem_price"]))
 
             st.markdown("---")
             st.subheader("Description (Optional)")
@@ -103,6 +113,13 @@ if page == "Data Entry":
                 }
                 try:
                     supabase.table("transactions").insert(data_payload).execute()
+                    
+                    # Remember these inputs for the next entry
+                    st.session_state["mem_date"] = datetime.strptime(date_val, '%Y-%m-%d')
+                    st.session_state["mem_wire"] = wire_size
+                    st.session_state["mem_type"] = transaction_type
+                    st.session_state["mem_price"] = int(selling_price)
+                    
                     st.success("✅ Transaction successfully saved to the cloud database!")
                     st.balloons()
                 except Exception as e:
@@ -154,7 +171,17 @@ elif page == "Dashboard & Inventory":
             st.dataframe(pd.DataFrame(inv_data).set_index("Wire Size (mm)"), use_container_width=True)
             
         st.subheader("📜 Recent Activity Log")
-        st.dataframe(df_filtered[['date', 'wire_size', 'transaction_type', 'quantity', 'unsealed_size', 'lost_grams', 'comment']], use_container_width=True)
+        # Removed 'comment' from the main data table display
+        st.dataframe(df_filtered[['date', 'wire_size', 'transaction_type', 'quantity', 'unsealed_size', 'lost_grams']], use_container_width=True)
+
+        st.subheader("📝 Comments & Notes Summary")
+        # Filter to show only rows that actually have a comment
+        comments_df = df_filtered[df_filtered['comment'].notna() & (df_filtered['comment'] != "")]
+        if not comments_df.empty:
+            st.dataframe(comments_df[['date', 'wire_size', 'transaction_type', 'comment']], use_container_width=True)
+        else:
+            st.info("No comments recorded for the selected period.")
+
     else:
         if supabase is not None:
             st.info("The cloud database is currently empty. Add your first transaction to view details.")
