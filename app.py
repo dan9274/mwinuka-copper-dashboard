@@ -79,18 +79,15 @@ if page == "Data Entry":
                 date_val = st.date_input("Date", st.session_state["mem_date"]).strftime('%Y-%m-%d')
                 wire_size = st.selectbox("Wire Size (mm)", WIRE_SIZES, index=WIRE_SIZES.index(st.session_state["mem_wire"]))
                 transaction_type = st.selectbox("Transaction Type", ["Stock In", "Sale"], index=["Stock In", "Sale"].index(st.session_state["mem_type"]))
+                unsealed_size = st.selectbox("Unsealed Size (mm)", [""] + WIRE_SIZES)
             with col2:
                 quantity = st.number_input("Quantity (kg)", min_value=0.0, step=0.001, format="%.3f")
                 selling_price = st.selectbox("Selling Price (TZS per kg)", [49000, 60000], index=[49000, 60000].index(st.session_state["mem_price"]))
+                lost_grams = st.number_input("Negative Grams (g)", min_value=0.0, step=1.0)
 
             st.markdown("---")
-            st.subheader("Description (Optional)")
-            col3, col4 = st.columns(2)
-            with col3:
-                unsealed_size = st.selectbox("Unsealed Size (mm)", [""] + WIRE_SIZES)
-                lost_grams = st.number_input("Negative Grams (g)", min_value=0.0, step=1.0)
-            with col4:
-                comment = st.text_area("Comment / Notes", placeholder="Type any additional details here...")
+            st.subheader("📝 Description")
+            description = st.text_area("Description", placeholder="Type any additional details here...")
 
             submit = st.form_submit_button("Save Transaction")
             
@@ -109,7 +106,7 @@ if page == "Data Entry":
                     "selling_price": float(selling_price),
                     "unsealed_size": unsealed_size if unsealed_size != "" else None,
                     "lost_grams": lost_grams,
-                    "comment": comment if comment.strip() != "" else None
+                    "comment": description if description.strip() != "" else None
                 }
                 try:
                     supabase.table("transactions").insert(data_payload).execute()
@@ -174,13 +171,16 @@ elif page == "Dashboard & Inventory":
         # Removed 'comment' from the main data table display
         st.dataframe(df_filtered[['date', 'wire_size', 'transaction_type', 'quantity', 'unsealed_size', 'lost_grams']], use_container_width=True)
 
-        st.subheader("📝 Comments & Notes Summary")
+        st.subheader("📝 Descriptions Summary")
         # Filter to show only rows that actually have a comment
         comments_df = df_filtered[df_filtered['comment'].notna() & (df_filtered['comment'] != "")]
         if not comments_df.empty:
-            st.dataframe(comments_df[['date', 'wire_size', 'transaction_type', 'comment']], use_container_width=True)
+            for _, row in comments_df.iterrows():
+                with st.container():
+                    st.markdown(f"**🗓️ {row['date']} | 📏 {row['wire_size']}mm | 🔄 {row['transaction_type']} | ⚖️ {row['quantity']}kg**")
+                    st.info(row['comment'])
         else:
-            st.info("No comments recorded for the selected period.")
+            st.info("No descriptions recorded for the selected period.")
 
     else:
         if supabase is not None:
@@ -207,14 +207,19 @@ elif page == "✏️ Edit Records":
                 target = df[df['id'] == selected_id].iloc[0]
                 
                 with st.form("edit_form"):
-                    e_date = st.date_input("Edit Date", datetime.strptime(target['date'], '%Y-%m-%d')).strftime('%Y-%m-%d')
-                    e_size = st.selectbox("Edit Wire Size", WIRE_SIZES, index=WIRE_SIZES.index(target['wire_size']))
-                    e_type = st.selectbox("Edit Type", ["Stock In", "Sale"], index=0 if target['transaction_type'] == "Stock In" else 1)
-                    e_qty = st.number_input("Edit Quantity (kg)", value=float(target['quantity']), format="%.3f")
-                    e_price = st.selectbox("Edit Price", [49000, 60000], index=0 if int(target['selling_price']) == 49000 else 1)
-                    e_unsealed = st.selectbox("Edit Unsealed Size", [""] + WIRE_SIZES, index=(WIRE_SIZES.index(target['unsealed_size'])+1) if target['unsealed_size'] else 0)
-                    e_lost = st.number_input("Edit Negative Grams (g)", value=float(target['lost_grams'] or 0))
-                    e_comment = st.text_area("Edit Comment", value=target['comment'] if target['comment'] else "")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        e_date = st.date_input("Edit Date", datetime.strptime(target['date'], '%Y-%m-%d')).strftime('%Y-%m-%d')
+                        e_size = st.selectbox("Edit Wire Size", WIRE_SIZES, index=WIRE_SIZES.index(target['wire_size']))
+                        e_type = st.selectbox("Edit Type", ["Stock In", "Sale"], index=0 if target['transaction_type'] == "Stock In" else 1)
+                        e_unsealed = st.selectbox("Edit Unsealed Size", [""] + WIRE_SIZES, index=(WIRE_SIZES.index(target['unsealed_size'])+1) if target['unsealed_size'] else 0)
+                    with col2:
+                        e_qty = st.number_input("Edit Quantity (kg)", value=float(target['quantity']), format="%.3f")
+                        e_price = st.selectbox("Edit Price", [49000, 60000], index=0 if int(target['selling_price']) == 49000 else 1)
+                        e_lost = st.number_input("Edit Negative Grams (g)", value=float(target['lost_grams'] or 0))
+                    
+                    st.markdown("---")
+                    e_description = st.text_area("Edit Description", value=target['comment'] if target['comment'] else "")
                     
                     c1, c2 = st.columns(2)
                     with c1:
@@ -229,7 +234,7 @@ elif page == "✏️ Edit Records":
                     else:
                         update_payload = {
                             "date": e_date, "wire_size": e_size, "transaction_type": e_type, "quantity": e_qty, "selling_price": float(e_price),
-                            "unsealed_size": e_unsealed if e_unsealed != "" else None, "lost_grams": e_lost, "comment": e_comment if e_comment.strip() != "" else None
+                            "unsealed_size": e_unsealed if e_unsealed != "" else None, "lost_grams": e_lost, "comment": e_description if e_description.strip() != "" else None
                         }
                         supabase.table("transactions").update(update_payload).eq("id", selected_id).execute()
                         st.success("Record updated successfully!")
