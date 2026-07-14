@@ -74,19 +74,24 @@ if page == "Data Entry":
             st.warning("⚠️ Database not connected. Please configure your Streamlit Secrets.")
             
         with st.form("entry_form", clear_on_submit=True):
+            st.subheader("Primary Details")
             col1, col2 = st.columns(2)
             with col1:
                 date_val = st.date_input("Date", st.session_state["mem_date"]).strftime('%Y-%m-%d')
                 wire_size = st.selectbox("Wire Size (mm)", WIRE_SIZES, index=WIRE_SIZES.index(st.session_state["mem_wire"]))
                 transaction_type = st.selectbox("Transaction Type", ["Stock In", "Sale"], index=["Stock In", "Sale"].index(st.session_state["mem_type"]))
-                unsealed_size = st.selectbox("Unsealed Size (mm)", [""] + WIRE_SIZES)
             with col2:
                 quantity = st.number_input("Quantity (kg)", min_value=0.0, step=0.001, format="%.3f")
                 selling_price = st.selectbox("Selling Price (TZS per kg)", [49000, 60000], index=[49000, 60000].index(st.session_state["mem_price"]))
-                lost_grams = st.number_input("Negative Grams (g)", min_value=0.0, step=1.0)
 
             st.markdown("---")
-            st.subheader("📝 Description")
+            st.subheader("📝 Additional Details (Optional)")
+            col3, col4 = st.columns(2)
+            with col3:
+                unsealed_size = st.selectbox("Unsealed Size (mm)", [""] + WIRE_SIZES)
+            with col4:
+                lost_grams = st.number_input("Negative Grams (g)", min_value=0.0, step=1.0)
+
             description = st.text_area("Description", placeholder="Type any additional details here...")
 
             submit = st.form_submit_button("Save Transaction")
@@ -207,20 +212,27 @@ elif page == "✏️ Edit Records":
                 target = df[df['id'] == selected_id].iloc[0]
                 
                 with st.form("edit_form"):
+                    st.subheader("Primary Details")
                     col1, col2 = st.columns(2)
                     with col1:
                         e_date = st.date_input("Edit Date", datetime.strptime(target['date'], '%Y-%m-%d')).strftime('%Y-%m-%d')
                         e_size = st.selectbox("Edit Wire Size", WIRE_SIZES, index=WIRE_SIZES.index(target['wire_size']))
                         e_type = st.selectbox("Edit Type", ["Stock In", "Sale"], index=0 if target['transaction_type'] == "Stock In" else 1)
-                        e_unsealed = st.selectbox("Edit Unsealed Size", [""] + WIRE_SIZES, index=(WIRE_SIZES.index(target['unsealed_size'])+1) if target['unsealed_size'] else 0)
                     with col2:
                         e_qty = st.number_input("Edit Quantity (kg)", value=float(target['quantity']), format="%.3f")
                         e_price = st.selectbox("Edit Price", [49000, 60000], index=0 if int(target['selling_price']) == 49000 else 1)
-                        e_lost = st.number_input("Edit Negative Grams (g)", value=float(target['lost_grams'] or 0))
                     
                     st.markdown("---")
+                    st.subheader("📝 Additional Details (Optional)")
+                    col3, col4 = st.columns(2)
+                    with col3:
+                        e_unsealed = st.selectbox("Edit Unsealed Size", [""] + WIRE_SIZES, index=(WIRE_SIZES.index(target['unsealed_size'])+1) if target['unsealed_size'] else 0)
+                    with col4:
+                        e_lost = st.number_input("Edit Negative Grams (g)", value=float(target['lost_grams'] or 0))
+                    
                     e_description = st.text_area("Edit Description", value=target['comment'] if target['comment'] else "")
                     
+                    st.markdown("---")
                     c1, c2 = st.columns(2)
                     with c1:
                         save_btn = st.form_submit_button("💾 Save Changes")
